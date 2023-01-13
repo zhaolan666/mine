@@ -1,56 +1,148 @@
 <script setup lang="ts">
-defineOptions({
-  name: 'IndexPage',
-})
-const user = useUserStore()
-const name = $ref(user.savedName)
 
-const router = useRouter()
-const go = () => {
-  if (name)
-    router.push(`/hi/${encodeURIComponent(name)}`)
+interface BlockState {
+  x: number
+  y: number
+  revealed: boolean
+  mine?: boolean
+  flagged?: boolean
+  adjacentMines: number
 }
 
-const { t } = useI18n()
+const WIDTH = 10
+const HEIGHT = 10
+
+const state = reactive(
+  Array.from(
+    { length: HEIGHT }, (_, y) =>
+      Array.from({ length: WIDTH },
+        (_, x): BlockState => ({
+          x,
+          y,
+          adjacentMines: 0,
+          revealed: false,
+        })
+        ,
+      )))
+function generateMines(initial: BlockState) {
+  for (const row of state) {
+    for (const block of row) {
+      if (Math.abs(initial.x - block.x) < 1)
+        continue
+      if (Math.abs(initial.y - block.y) < 1)
+        continue
+      block.mine = Math.random() < 0.2
+    }
+  }
+  updateNumbers()
+}
+
+const directions = [[-1, -1], [-1, 0], [-1, 1],
+  [0, -1], [0, 1],
+  [1, -1], [1, 0], [1, 1],
+]
+
+const numberColors = [
+  'text-transparent',
+  'text-blue-500',
+  'text-green-500',
+  'text-yellow-500',
+  'text-orange-500',
+  'text-red-500',
+  'text-purple-500',
+  'text-pink-500',
+  'text-teal-500',
+]
+
+function updateNumbers() {
+  state.forEach((row, y) => {
+    state.forEach((block, x) => {
+      if (block.mine)
+        return
+      getSiblings(block).forEach((b) => {
+        if (b.mine)
+          block?.adjacentMines += 1
+      })
+    })
+  })
+}
+
+function expendZero(block: BlockState) {
+  if (block.adjacentMines)
+    return
+
+  getSiblings(block).forEach((s) => {
+    if (!s.revealed) {
+      s.revealed = true
+      expendZero(s)
+    }
+  })
+}
+
+function getBlockClass(block: BlockState): string {
+  if (!block.revealed)
+    return 'bg-gray-500/10'
+  return block.mine
+    ? 'text-red-500/50'
+    : numberColors[block.adjacentMines]
+}
+
+let mineGenerated = false
+const dev = true
+
+function onClick(block: BlockState) {
+  if (!mineGenerated) {
+    generateMines(block)
+    mineGenerated = true
+  }
+  block.revealed = true
+  if (block.mine)
+    alert('BOOOOM!')
+  expendZero(block)
+}
+function getSiblings(block: BlockState) {
+  return directions.map(([dx, dy]) => {
+    const x2 = block.x + dx
+    const y2 = block.y + dy
+    if (x2 < 0 || x2 >= WIDTH || y2 < 0 || y2 >= HEIGHT)
+      return undefined
+
+    return (state[y2][x2].mine)
+  })
+    .filter(Boolean) as BlockState[]
+}
+updateNumbers()
+generateMines()
 </script>
 
 <template>
-  <div>
-    <div text-4xl>
-      <div i-carbon-campsite inline-block />
-    </div>
-    <p>
-      <a rel="noreferrer" href="https://github.com/antfu/vitesse" target="_blank">
-        Vitesse
-      </a>
-    </p>
-    <p>
-      <em text-sm opacity-75>{{ t('intro.desc') }}</em>
-    </p>
-
-    <div py-4 />
-
-    <TheInput
-      v-model="name"
-      placeholder="What's your name?"
-      autocomplete="false"
-      @keydown.enter="go"
-    />
-    <label class="hidden" for="input">{{ t('intro.whats-your-name') }}</label>
-
+  <div p5>
+    Minesweeper
     <div>
-      <button
-        btn m-3 text-sm
-        :disabled="!name"
-        @click="go"
+      <div
+        v-for="row,y in state"
+        :key="y"
+        flex="~" blocks-center
+        justify-content
       >
-        {{ t('button.go') }}
-      </button>
+        <button
+          v-for="block,x in row" :key="x"
+          w-10 h-10 m="0.5"
+          hover="bg-gray/10"
+          flex="~"
+          items-center justify-content
+          border="1 gray-400/10"
+          :class="getBlockClass(block)"
+          @click="onClick(block)"
+        >
+          <template v-if="block.revealed || dev">
+            <div v-if="block.mine" i-mdi-mine />
+            <div v-else>
+              {{ block.adjacentMines }}
+            </div>
+          </template>
+        </button>
+      </div>
     </div>
   </div>
 </template>
-
-<route lang="yaml">
-meta:
-  layout: home
-</route>
