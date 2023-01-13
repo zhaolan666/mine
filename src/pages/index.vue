@@ -1,18 +1,10 @@
 <script setup lang="ts">
-
-interface BlockState {
-  x: number
-  y: number
-  revealed: boolean
-  mine?: boolean
-  flagged?: boolean
-  adjacentMines: number
-}
+import type { BlockState } from '~/types'
 
 const WIDTH = 10
 const HEIGHT = 10
 
-const state = reactive(
+const state = ref(
   Array.from(
     { length: HEIGHT }, (_, y) =>
       Array.from({ length: WIDTH },
@@ -25,7 +17,7 @@ const state = reactive(
         ,
       )))
 function generateMines(initial: BlockState) {
-  for (const row of state) {
+  for (const row of state.value) {
     for (const block of row) {
       if (Math.abs(initial.x - block.x) < 1)
         continue
@@ -55,8 +47,8 @@ const numberColors = [
 ]
 
 function updateNumbers() {
-  state.forEach((row, y) => {
-    state.forEach((block, x) => {
+  state.value.forEach((row, y) => {
+    state.value.forEach((block, x) => {
       if (block.mine)
         return
       getSiblings(block).forEach((b) => {
@@ -80,17 +72,26 @@ function expendZero(block: BlockState) {
 }
 
 function getBlockClass(block: BlockState): string {
-  if (!block.revealed)
+  if (!block.flagged)
     return 'bg-gray-500/10'
+
+  if (!block.revealed)
+    return 'bg-gray-500/10 :hover:bg-gray-500/20'
   return block.mine
     ? 'text-red-500/50'
     : numberColors[block.adjacentMines]
 }
 
 let mineGenerated = false
-const dev = true
+const dev = false
 
-function onClick(block: BlockState) {
+function onRightClick(block: BlockState) {
+  if (block.revealed)
+    return
+  block.flagged = !block.flagged
+}
+
+function onClick(e: MouseEvent, block: BlockState) {
   if (!mineGenerated) {
     generateMines(block)
     mineGenerated = true
@@ -100,6 +101,7 @@ function onClick(block: BlockState) {
     alert('BOOOOM!')
   expendZero(block)
 }
+
 function getSiblings(block: BlockState) {
   return directions.map(([dx, dy]) => {
     const x2 = block.x + dx
@@ -107,12 +109,24 @@ function getSiblings(block: BlockState) {
     if (x2 < 0 || x2 >= WIDTH || y2 < 0 || y2 >= HEIGHT)
       return undefined
 
-    return (state[y2][x2].mine)
+    return state.value[y2][x2]
   })
     .filter(Boolean) as BlockState[]
 }
-updateNumbers()
-generateMines()
+
+const wef = watchEffect()
+
+function checkGameState() {
+  const blocks = state.value.flat()
+
+  if (blocks.every((block: BlockState) => block.revealed || block.flagged)) {
+    if (blocks.some(block => block.flagged && !block.mine))
+      alert('You cheat!')
+    else
+      alert('You win!')
+  }
+}
+
 </script>
 
 <template>
@@ -133,9 +147,13 @@ generateMines()
           items-center justify-content
           border="1 gray-400/10"
           :class="getBlockClass(block)"
-          @click="onClick(block)"
+          @click="onClick($event,block)"
+          @onContextMenu.prevent="onRightClick(block)"
         >
-          <template v-if="block.revealed || dev">
+          <template v-if="block.flagged || dev">
+            <div i-mdi-flag text-red />
+          </template>
+          <template v-else-if="block.revealed || dev">
             <div v-if="block.mine" i-mdi-mine />
             <div v-else>
               {{ block.adjacentMines }}
